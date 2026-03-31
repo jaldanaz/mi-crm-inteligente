@@ -52,23 +52,62 @@ elif menu == "Clientes":
         else:
             st.info("La base de datos está vacía. Ve a 'Importar Datos'.")
 
+# --- VISTA: IMPORTAR DATOS (Versión Pro) ---
 elif menu == "Importar Datos":
-    st.title("📥 Cargar Clientes")
+    st.title("📥 Importación Inteligente de Clientes")
+    st.info("Asegúrate de que tu Excel tenga las columnas: 'nombre' y 'email'")
+    
     archivo = st.file_uploader("Sube tu Excel (.xlsx)", type=["xlsx"])
     
     if archivo:
         df_nuevo = pd.read_excel(archivo)
-        st.write("Datos detectados:", df_nuevo.head())
         
-        if st.button("Guardar en el CRM"):
+        # Limpieza inicial: quitamos filas totalmente vacías
+        df_nuevo = df_nuevo.dropna(subset=['nombre', 'email'])
+        
+        st.write(f"📊 Total de registros detectados en el archivo: {len(df_nuevo)}")
+        
+        if st.button("🚀 Iniciar Carga"):
+            exitos = 0
+            duplicados = 0
+            errores = 0
+            
             with Session(engine) as session:
                 for _, row in df_nuevo.iterrows():
-                    # Solo agregamos si el email no existe para evitar basura
-                    nuevo = Contacto(
-                        nombre=str(row['nombre']),
-                        email=str(row['email']),
-                        empresa=str(row.get('empresa', 'WOM'))
-                    )
-                    session.add(nuevo)
+                    try:
+                        # Limpiamos espacios en blanco alrededor de los textos
+                        email_limpio = str(row['email']).strip().lower()
+                        nombre_limpio = str(row['nombre']).strip()
+                        
+                        # Verificamos si YA existe en la base de datos
+                        # (Esto evita el error rojo de SQLAlchemy)
+                        stmt = select(Contacto).where(Contacto.email == email_limpio)
+                        existente = session.exec(stmt).first()
+                        
+                        if existente:
+                            duplicados += 1
+                            continue # Se salta al siguiente
+                            
+                        nuevo = Contacto(
+                            nombre=nombre_limpio,
+                            email=email_limpio,
+                            empresa=str(row.get('empresa', 'WOM')).strip()
+                        )
+                        session.add(nuevo)
+                        exitos += 1
+                        
+                    except Exception as e:
+                        errores += 1
+                        st.error(f"Error en fila {nombre_limpio}: {e}")
+                
                 session.commit()
-            st.success("¡Clientes guardados exitosamente!")
+            
+            # --- REPORTE FINAL ---
+            st.success(f"✅ Proceso terminado")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Cargados", exitos)
+            col2.metric("Duplicados/Omitidos", duplicados)
+            col3.metric("Errores", errores)
+            
+            if exitos > 0:
+                st.balloons()
