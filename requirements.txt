@@ -2,6 +2,8 @@ streamlit
 sqlmodel
 pandas
 openpyxl
+rapidfuzz
 google-api-python-client
 google-auth-oauthlib
-rapidfuzz
+plotly
+phonenumbers
